@@ -222,7 +222,7 @@ public class Keyboard2 extends InputMethodService
       _config.actionLabel = actionLabel_of_imeAction(action); // Might be null
       actionId = action;
       _config.swapEnterActionKey =
-        (info.imeOptions & EditorInfo.IME_FLAG_NO_ENTER_ACTION) == 0;
+        (info.imeOptions & EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0;
     }
   }
 

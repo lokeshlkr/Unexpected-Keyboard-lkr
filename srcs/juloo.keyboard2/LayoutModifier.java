@@ -166,9 +166,11 @@ public final class LayoutModifier
             break;
           case ACTION:
             if (globalConfig.actionLabel == null)
-              return null; // Remove the action key
-            if (globalConfig.swapEnterActionKey)
+              // return null; // Remove the action key
               return KeyValue.getKeyByName("enter");
+            if (globalConfig.swapEnterActionKey)
+              return KeyValue.makeCharKey((char)0xE00E,'\n', 0);
+              // return KeyValue.getKeyByName("enter");
             return KeyValue.makeActionKey(globalConfig.actionLabel);
           case SWITCH_FORWARD:
             return (globalConfig.layouts.size() > 1) ? orig : null;
