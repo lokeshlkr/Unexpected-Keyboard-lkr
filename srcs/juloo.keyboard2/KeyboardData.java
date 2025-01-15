@@ -193,21 +193,22 @@ public final class KeyboardData
   /** Load a layout from a resource ID. Returns [null] on error. */
   public static KeyboardData load(Resources res, int id)
   {
-    KeyboardData l = _layoutCache.get(id);
-    if (l == null)
+    if (_layoutCache.containsKey(id))
+      return _layoutCache.get(id);
+    KeyboardData l = null;
+    XmlResourceParser parser = null;
+    try
     {
-      try
-      {
-        XmlResourceParser parser = res.getXml(id);
-        l = parse_keyboard(parser);
-        parser.close();
-        _layoutCache.put(id, l);
-      }
-      catch (Exception e)
-      {
-        e.printStackTrace();
-      }
+      parser = res.getXml(id);
+      l = parse_keyboard(parser);
     }
+    catch (Exception e)
+    {
+      Logs.exn("Failed to load layout id " + id, e);
+    }
+    if (parser != null)
+      parser.close();
+    _layoutCache.put(id, l);
     return l;
   }
 
@@ -400,9 +401,6 @@ public final class KeyboardData
     public final float width;
     /** Extra empty space on the left of the key. */
     public final float shift;
-    /** Keys 2 and 3 are repeated as the finger moves laterally on the key.
-        Used for the left and right arrow keys on the space bar. */
-    public final boolean slider;
     /** String printed on the keys. It has no other effect. */
     public final String indication;
 
@@ -410,14 +408,13 @@ public final class KeyboardData
     public static final int F_LOC = 1;
     public static final int ALL_FLAGS = F_LOC;
 
-    protected Key(KeyValue[] ks, KeyValue antic, int f, float w, float s, boolean sl, String i)
+    protected Key(KeyValue[] ks, KeyValue antic, int f, float w, float s, String i)
     {
       keys = ks;
       anticircle = antic;
       keysflags = f;
       width = Math.max(w, 0f);
       shift = Math.max(s, 0f);
-      slider = sl;
       indication = i;
     }
 
@@ -472,7 +469,7 @@ public final class KeyboardData
     {
       KeyValue[] ks = new KeyValue[9];
       int keysflags = 0;
-      keysflags |= parse_key_attr(parser, parser.getAttributeValue(null, "key0"), ks, 0);
+      keysflags |= parse_key_attr(parser, get_key_attr(parser, "key0", "c"), ks, 0);
       /* Swipe gestures (key1-key8 diagram above), with compass-point synonyms. */
       keysflags |= parse_key_attr(parser, get_key_attr(parser, "key1", "nw"), ks, 1);
       keysflags |= parse_key_attr(parser, get_key_attr(parser, "key2", "ne"), ks, 2);
@@ -486,11 +483,10 @@ public final class KeyboardData
       KeyValue anticircle = parse_nonloc_key_attr(parser, "anticircle");
       float width = attribute_float(parser, "width", 1f);
       float shift = attribute_float(parser, "shift", 0.f);
-      boolean slider = attribute_bool(parser, "slider", false);
       String indication = parser.getAttributeValue(null, "indication");
       while (parser.next() != XmlPullParser.END_TAG)
         continue;
-      return new Key(ks, anticircle, keysflags, width, shift, slider, indication);
+      return new Key(ks, anticircle, keysflags, width, shift, indication);
     }
 
     /** Whether key at [index] as [flag]. */
@@ -502,8 +498,7 @@ public final class KeyboardData
     /** New key with the width multiplied by 's'. */
     public Key scaleWidth(float s)
     {
-      return new Key(keys, anticircle, keysflags, width * s, shift, slider,
-          indication);
+      return new Key(keys, anticircle, keysflags, width * s, shift, indication);
     }
 
     public void getKeys(Map<KeyValue, KeyPos> dst, int row, int col)
@@ -524,12 +519,12 @@ public final class KeyboardData
       for (int j = 0; j < keys.length; j++) ks[j] = keys[j];
       ks[i] = kv;
       int flags = (keysflags & ~(ALL_FLAGS << i));
-      return new Key(ks, anticircle, flags, width, shift, slider, indication);
+      return new Key(ks, anticircle, flags, width, shift, indication);
     }
 
     public Key withShift(float s)
     {
-      return new Key(keys, anticircle, keysflags, width, s, slider, indication);
+      return new Key(keys, anticircle, keysflags, width, s, indication);
     }
 
     public boolean hasValue(KeyValue kv)
@@ -555,7 +550,7 @@ public final class KeyboardData
       for (int i = 0; i < ks.length; i++)
         if (k.keys[i] != null)
           ks[i] = apply(k.keys[i], k.keyHasFlag(i, Key.F_LOC));
-      return new Key(ks, k.anticircle, k.keysflags, k.width, k.shift, k.slider, k.indication);
+      return new Key(ks, k.anticircle, k.keysflags, k.width, k.shift, k.indication);
     }
   }
 

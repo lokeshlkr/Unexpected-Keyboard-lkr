@@ -60,10 +60,10 @@ public final class KeyEventHandler
   {
     if (key == null)
       return;
+    // Stop auto capitalisation when pressing some keys
     switch (key.getKind())
     {
       case Modifier:
-        // Stop auto capitalisation when activating a system modifier
         switch (key.getModifier())
         {
           case CTRL:
@@ -72,6 +72,9 @@ public final class KeyEventHandler
             _autocap.stop();
             break;
         }
+        break;
+      case Compose_pending:
+        _autocap.stop();
         break;
       default: break;
     }
@@ -96,7 +99,9 @@ public final class KeyEventHandler
       case Compose_pending:
         _recv.set_compose_pending(true);
         break;
-      case Cursor_move: move_cursor(key.getCursorMove()); break;
+      case Slider: handle_slider(key.getSlider(), key.getSliderRepeat()); break;
+      case StringWithSymbol: send_text(key.getStringWithSymbol()); break;
+      case Macro: send_macro(key.getMacroKeys()); break;
     }
     update_meta_state(old_mods);
   }
@@ -186,6 +191,49 @@ public final class KeyEventHandler
     send_keyevent(KeyEvent.ACTION_DOWN, keyCode);
     send_keyevent(KeyEvent.ACTION_UP, keyCode);
   }
+  public static void wait(int ms)
+  {
+    try
+    {
+      Thread.sleep(ms);
+    }
+    catch(InterruptedException ex)
+    {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  void send_macro(KeyValue[] keys)
+  {
+    Pointers.Modifiers active_mods = Pointers.Modifiers.EMPTY;
+    for(KeyValue key : keys){
+      switch(key.getKind()){
+        case Char:
+          key = KeyModifier.turn_into_keyevent(key);
+        case String:
+//          String s = key.getString();
+//          for (int i = 0; i < s.length(); i++) {
+//            try{
+//              KeyValue k = KeyValue.makeCharAsKeyEvent(s.charAt(i));
+//              key_up(k,active_mods);
+//            }
+//            catch (Exception e){
+//
+//            }
+//          }
+//          active_mods = Pointers.Modifiers.EMPTY;
+//          break;
+        case Keyevent:
+          key_up(key,active_mods);
+          active_mods = Pointers.Modifiers.EMPTY;
+          break;
+        case Modifier:
+          active_mods = active_mods.with_extra_mod(key);
+        default:break;
+      }
+      wait(20);
+    }
+  }
 
   void send_keyevent(int eventAction, int eventCode)
   {
@@ -248,6 +296,18 @@ public final class KeyEventHandler
     return conn.getExtractedText(_move_cursor_req, 0);
   }
 
+  /** [repeatition] might be negative, in which case the direction is reversed. */
+  void handle_slider(KeyValue.Slider s, int repeatition)
+  {
+    switch (s)
+    {
+      case Cursor_left: move_cursor(-repeatition); break;
+      case Cursor_right: move_cursor(repeatition); break;
+      case Cursor_up: move_cursor_vertical(-repeatition); break;
+      case Cursor_down: move_cursor_vertical(repeatition); break;
+    }
+  }
+
   /** Move the cursor right or left, if possible without sending key events.
       Unlike arrow keys, the selection is not removed even if shift is not on.
       Falls back to sending arrow keys events if the editor do not support
@@ -260,47 +320,51 @@ public final class KeyEventHandler
     ExtractedText et = get_cursor_pos(conn);
     int system_mods =
       KeyEvent.META_CTRL_ON | KeyEvent.META_ALT_ON | KeyEvent.META_META_ON;
-    // Fallback to sending key events
-    if (_move_cursor_force_fallback || et == null
-        || (_meta_state & system_mods) != 0)
+    // Fallback to sending key events if system modifiers are activated or
+    // ExtractedText is not supported, for example on Termux.
+    if (!_move_cursor_force_fallback && et != null
+        && (_meta_state & system_mods) == 0)
     {
-      move_cursor_fallback(d);
-      return;
-    }
-    int sel_start = et.selectionStart;
-    int sel_end = et.selectionEnd;
-    // Continue expanding the selection even if shift is not pressed
-    if (sel_end != sel_start)
-    {
-      sel_end += d;
-      if (sel_end == sel_start) // Avoid making the selection empty
+      int sel_start = et.selectionStart;
+      int sel_end = et.selectionEnd;
+      // Continue expanding the selection even if shift is not pressed
+      if (sel_end != sel_start)
+      {
         sel_end += d;
+        if (sel_end == sel_start) // Avoid making the selection empty
+          sel_end += d;
+      }
+      else
+      {
+        sel_end += d;
+        // Leave 'sel_start' where it is if shift is pressed
+        if ((_meta_state & KeyEvent.META_SHIFT_ON) == 0)
+          sel_start = sel_end;
+      }
+      if (conn.setSelection(sel_start, sel_end))
+        return; // [setSelection] succeeded, don't fallback to key events
     }
+    if (d < 0)
+      send_key_down_up_repeat(KeyEvent.KEYCODE_DPAD_LEFT, -d);
     else
-    {
-      sel_end += d;
-      // Leave 'sel_start' where it is if shift is pressed
-      if ((_meta_state & KeyEvent.META_SHIFT_ON) == 0)
-        sel_start = sel_end;
-    }
-    if (!conn.setSelection(sel_start, sel_end))
-      move_cursor_fallback(d);
+      send_key_down_up_repeat(KeyEvent.KEYCODE_DPAD_RIGHT, d);
   }
 
-  /** Send arrow keys as a fallback for editors that do not support
-      [getExtractedText] like Termux. */
-  void move_cursor_fallback(int d)
+  /** Move the cursor up and down. This sends UP and DOWN key events that might
+      make the focus exit the text box. */
+  void move_cursor_vertical(int d)
   {
-    while (d < 0)
-    {
-      send_key_down_up(KeyEvent.KEYCODE_DPAD_LEFT);
-      d++;
-    }
-    while (d > 0)
-    {
-      send_key_down_up(KeyEvent.KEYCODE_DPAD_RIGHT);
-      d--;
-    }
+    if (d < 0)
+      send_key_down_up_repeat(KeyEvent.KEYCODE_DPAD_UP, -d);
+    else
+      send_key_down_up_repeat(KeyEvent.KEYCODE_DPAD_DOWN, d);
+  }
+
+  /** Repeat calls to [send_key_down_up]. */
+  void send_key_down_up_repeat(int event_code, int repeat)
+  {
+    while (repeat-- > 0)
+      send_key_down_up(event_code);
   }
 
   public static interface IReceiver
