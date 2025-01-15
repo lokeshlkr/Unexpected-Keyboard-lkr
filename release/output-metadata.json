@@ -16,6 +16,5 @@
       "outputFile": "juloo.keyboard2.apk"
     }
   ],
-  "elementType": "File",
-  "minSdkVersionForDexing": 21
+  "elementType": "File"
 }
