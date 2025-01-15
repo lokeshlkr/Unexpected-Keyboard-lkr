@@ -101,6 +101,7 @@ public final class KeyEventHandler
         break;
       case Slider: handle_slider(key.getSlider(), key.getSliderRepeat()); break;
       case StringWithSymbol: send_text(key.getStringWithSymbol()); break;
+      case Macro: send_macro(key.getMacroKeys()); break;
     }
     update_meta_state(old_mods);
   }
@@ -189,6 +190,49 @@ public final class KeyEventHandler
   {
     send_keyevent(KeyEvent.ACTION_DOWN, keyCode);
     send_keyevent(KeyEvent.ACTION_UP, keyCode);
+  }
+  public static void wait(int ms)
+  {
+    try
+    {
+      Thread.sleep(ms);
+    }
+    catch(InterruptedException ex)
+    {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  void send_macro(KeyValue[] keys)
+  {
+    Pointers.Modifiers active_mods = Pointers.Modifiers.EMPTY;
+    for(KeyValue key : keys){
+      switch(key.getKind()){
+        case Char:
+          key = KeyModifier.turn_into_keyevent(key);
+        case String:
+//          String s = key.getString();
+//          for (int i = 0; i < s.length(); i++) {
+//            try{
+//              KeyValue k = KeyValue.makeCharAsKeyEvent(s.charAt(i));
+//              key_up(k,active_mods);
+//            }
+//            catch (Exception e){
+//
+//            }
+//          }
+//          active_mods = Pointers.Modifiers.EMPTY;
+//          break;
+        case Keyevent:
+          key_up(key,active_mods);
+          active_mods = Pointers.Modifiers.EMPTY;
+          break;
+        case Modifier:
+          active_mods = active_mods.with_extra_mod(key);
+        default:break;
+      }
+      wait(20);
+    }
   }
 
   void send_keyevent(int eventAction, int eventCode)

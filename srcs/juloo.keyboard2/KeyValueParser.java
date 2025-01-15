@@ -3,6 +3,7 @@ package juloo.keyboard2;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+
 /**
 Parse a key definition. The syntax for a key definition is:
 - [:(kind) (attributes):(payload)].
@@ -82,6 +83,16 @@ public final class KeyValueParser
           symbol = String.valueOf(eventcode);
         return KeyValue.keyeventKey(symbol, eventcode, flags);
 
+      case "macro":
+        payload = parseSingleQuotedString(m);
+        String[] keynames = payload.split(",");
+
+        KeyValue[] keys = new KeyValue[keynames.length];
+        for (int i = 0; i < keys.length; i++) {
+          keys[i] = KeyValue.getKeyByName(keynames[i]);
+        }
+        if (symbol == null) symbol = "∑[" + keys.length + "]";
+        return KeyValue.makeMacroKeyWithSymbol(keys,symbol,flags | KeyValue.FLAG_SMALLER_FONT | KeyValue.FLAG_SECONDARY);
       default: break;
     }
     parseError("Unknown kind '"+kind+"'", m, 1);
