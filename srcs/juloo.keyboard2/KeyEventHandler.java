@@ -10,6 +10,8 @@ import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
 import java.util.Iterator;
 
+import juloo.keyboard2.KeyValue;
+
 public final class KeyEventHandler
   implements Config.IKeyEventHandler,
              ClipboardHistoryService.ClipboardPasteCallback
@@ -315,12 +317,22 @@ public final class KeyEventHandler
       send_key_down_up_repeat(KeyEvent.KEYCODE_DPAD_DOWN, d);
   }
 
+  Pointers.Modifiers initial = Pointers.Modifiers.EMPTY;
+  KeyValue[] mods_to_preserve = {
+          KeyValue.getSpecialKeyByName("ctrl"),
+          KeyValue.getSpecialKeyByName("shift"),
+          KeyValue.getSpecialKeyByName("alt"),
+          KeyValue.getSpecialKeyByName("meta"),
+  };
   void evaluate_macro(KeyValue[] keys)
   {
-    final Pointers.Modifiers empty = Pointers.Modifiers.EMPTY;
-    // Ignore modifiers that are activated at the time the macro is evaluated
-    mods_changed(empty);
-    Pointers.Modifiers mods = empty;
+      for (KeyValue mod : mods_to_preserve) {
+          if (_mods.has(mod.getModifier())) {
+              initial = initial.with_extra_mod(mod);
+          }
+      }
+
+    Pointers.Modifiers mods = initial;
     final boolean autocap_paused = _autocap.pause();
     for (KeyValue kv : keys)
     {
@@ -331,17 +343,18 @@ public final class KeyEventHandler
       {
         // Non-special latchable keys clear latched modifiers
         if (!kv.hasFlagsAny(KeyValue.FLAG_SPECIAL))
-          mods = empty;
+          mods = initial;
         mods = mods.with_extra_mod(kv);
       }
       else
       {
         key_down(kv, false);
         key_up(kv, mods);
-        mods = empty;
+        mods = initial;
       }
     }
     _autocap.unpause(autocap_paused);
+    initial = Pointers.Modifiers.EMPTY;
   }
 
   /** Repeat calls to [send_key_down_up]. */

@@ -475,16 +475,9 @@ public final class KeyValue implements Comparable<KeyValue>
 
   public static KeyValue parseKeyDefinition(String str)
   {
-    if (str.length() < 2 || str.charAt(0) != ':')
+    if (str.length() < 2)
       return makeStringKey(str);
-    try
-    {
-      return KeyValueParser.parse(str);
-    }
-    catch (KeyValueParser.ParseError _e)
-    {
-      return makeStringKey(str);
-    }
+    return KeyValueParser.parse(str);
   }
 
   /**
