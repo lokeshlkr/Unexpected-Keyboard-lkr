@@ -1,8 +1,8 @@
 package juloo.keyboard2;
 
+import java.util.ArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 
 /**
 Parse a key definition. The syntax for a key definition is:
@@ -19,155 +19,253 @@ Examples:
 */
 public final class KeyValueParser
 {
-  static Pattern START_PAT;
-  static Pattern ATTR_PAT;
-  static Pattern QUOTED_PAT;
-  static Pattern PAYLOAD_START_PAT;
-  static Pattern WORD_PAT;
+//  static Pattern START_PAT;
+//  static Pattern ATTR_PAT;
+//  static Pattern QUOTED_PAT;
+//  static Pattern PAYLOAD_START_PAT;
+//  static Pattern WORD_PAT;
+//  static Pattern COMMA_PAT;
+//  static Pattern END_OF_INPUT_PAT;
 
-  static public KeyValue parse(String str) throws ParseError
-  {
+
+
+  static public KeyValue parse(String str){
+    String[] with_symbol = str.split(":",2);
     String symbol = null;
-    int flags = 0;
-    init();
-    // Kind
-    Matcher m = START_PAT.matcher(str);
-    if (!m.lookingAt())
-      parseError("Expected kind, for example \":str ...\".", m);
-    String kind = m.group(1);
-    // Attributes
-    while (true)
-    {
-      if (!match(m, ATTR_PAT))
-        break;
-      String attr_name = m.group(1);
-      String attr_value = parseSingleQuotedString(m);
-      switch (attr_name)
-      {
-        case "flags":
-          flags = parseFlags(attr_value, m);
-          break;
-        case "symbol":
-          symbol = attr_value;
-          break;
-
-        default:
-          parseError("Unknown attribute "+attr_name, m);
-      }
+    String keydata;
+    if(with_symbol.length == 1){
+      keydata = str;
+    }else{
+      symbol = with_symbol[0];
+      keydata = with_symbol[1];
     }
-    // Payload
-    if (!match(m, PAYLOAD_START_PAT))
-      parseError("Unexpected character", m);
-    String payload;
-    switch (kind)
-    {
-      case "str":
-        payload = parseSingleQuotedString(m);
-        if (symbol == null)
-          return KeyValue.makeStringKey(payload, flags);
-        return KeyValue.makeStringKeyWithSymbol(payload, symbol, flags);
+    String[] str_keys = escaped_split(keydata);
 
-      case "char":
-        payload = parsePayloadWord(m);
-        if (payload.length() != 1)
-          parseError("Expected a single character payload", m);
-        return KeyValue.makeCharKey(payload.charAt(0), symbol, flags);
-
-      case "keyevent":
-        payload = parsePayloadWord(m);
-        int eventcode = 0;
-        try { eventcode = Integer.parseInt(payload); }
-        catch (Exception _e)
-        { parseError("Expected an integer payload", m); }
-        if (symbol == null)
-          symbol = String.valueOf(eventcode);
-        return KeyValue.keyeventKey(symbol, eventcode, flags);
-
-      case "macro":
-        payload = parseSingleQuotedString(m);
-        String[] keynames = payload.split(",");
-
-        KeyValue[] keys = new KeyValue[keynames.length];
-        for (int i = 0; i < keys.length; i++) {
-          keys[i] = KeyValue.getKeyByName(keynames[i]);
+    if(symbol == null){
+      if(str_keys.length == 1){
+        if(str_keys[0].length() < 6){
+          symbol = str_keys[0];
         }
-        if (symbol == null) symbol = "∑[" + keys.length + "]";
-        return KeyValue.makeMacroKeyWithSymbol(keys,symbol,flags | KeyValue.FLAG_SMALLER_FONT | KeyValue.FLAG_SECONDARY);
-      default: break;
-    }
-    parseError("Unknown kind '"+kind+"'", m, 1);
-    return null; // Unreachable
-  }
-
-  static String parseSingleQuotedString(Matcher m) throws ParseError
-  {
-    if (!match(m, QUOTED_PAT))
-      parseError("Expected quoted string", m);
-    return m.group(1).replace("\\'", "'");
-  }
-
-  static String parsePayloadWord(Matcher m) throws ParseError
-  {
-    if (!match(m, WORD_PAT))
-      parseError("Expected a word after ':' made of [a-zA-Z0-9_]", m);
-    return m.group(0);
-  }
-
-  static int parseFlags(String s, Matcher m) throws ParseError
-  {
-    int flags = 0;
-    for (String f : s.split(","))
-    {
-      switch (f)
-      {
-        case "dim": flags |= KeyValue.FLAG_SECONDARY; break;
-        case "small": flags |= KeyValue.FLAG_SMALLER_FONT; break;
-        default: parseError("Unknown flag "+f, m);
+        else{
+          symbol = str_keys[0].substring(0,3)+"...";
+        }
+      }else{
+        symbol = "μ["+ str_keys.length +"]";
       }
     }
-    return flags;
+    KeyValue[] keys = new KeyValue[str_keys.length];
+    for (int i = 0; i < str_keys.length; i++) {
+      keys[i] = KeyValue.getSpecialKeyByName(str_keys[i]);
+      if(keys[i] == null){
+        keys[i] = KeyValue.makeStringKey(str_keys[i]);
+      }
+    }
+    return KeyValue.makeMacro(symbol,keys,0);
   }
 
-  static boolean match(Matcher m, Pattern pat)
-  {
-    try { m.region(m.end(), m.regionEnd()); } catch (Exception _e) {}
-    m.usePattern(pat);
-    return m.lookingAt();
+  // splits on comma (,)
+  // escapes any char by backslash (\)
+  // and all within single quotes (') is fully escaped.
+  static private String[] escaped_split(String str){
+    ArrayList<String> arl = new ArrayList<>();
+    StringBuilder stb = new StringBuilder();
+    boolean in_quotes = false;
+    boolean to_escape = false;
+    for (int i = 0; i < str.length(); i++) {
+      if(str.charAt(i) == '\\' && !in_quotes){
+        to_escape = true;
+        continue;
+      }
+      if(str.charAt(i) == ',' && !in_quotes && !to_escape){
+        arl.add(stb.toString());
+        stb = new StringBuilder();
+      }
+      else if(str.charAt(i) == '\'' && !to_escape){
+        in_quotes = !in_quotes;
+      }
+      else{
+        stb.append(str.charAt(i));
+      }
+      to_escape = false;
+    }
+    if(stb.length() > 0){
+      arl.add(stb.toString());
+    }
+    return arl.toArray(new String[0]);
   }
 
-  static void init()
-  {
-    if (START_PAT != null)
-      return;
-    START_PAT = Pattern.compile(":(\\w+)");
-    ATTR_PAT = Pattern.compile("\\s*(\\w+)\\s*=");
-    QUOTED_PAT = Pattern.compile("'(([^'\\\\]+|\\\\')*)'");
-    PAYLOAD_START_PAT = Pattern.compile("\\s*:");
-    WORD_PAT = Pattern.compile("[a-zA-Z0-9_]*");
-  }
 
-  static void parseError(String msg, Matcher m) throws ParseError
-  {
-    parseError(msg, m, m.regionStart());
-  }
+//  static public KeyValue parse_old(String str) throws ParseError
+//  {
+//    init();
+//    Matcher m = START_PAT.matcher(str);
+//    KeyValue k = parseKeyValue(m);
+//    if (!match(m, END_OF_INPUT_PAT))
+//      parseError("Unexpected character", m);
+//    return k;
+//  }
 
-  static void parseError(String msg, Matcher m, int i) throws ParseError
-  {
-    StringBuilder msg_ = new StringBuilder("Syntax error");
-    try
-    {
-      char c = m.group(0).charAt(0);
-      msg_.append(" at character '").append(c).append("'");
-    } catch (IllegalStateException _e) {}
-    msg_.append(" at position ");
-    msg_.append(i);
-    msg_.append(": ");
-    msg_.append(msg);
-    throw new ParseError(msg_.toString());
-  }
+//  static void init()
+//  {
+//    if (START_PAT != null)
+//      return;
+//    START_PAT = Pattern.compile(":(\\w+)");
+//    ATTR_PAT = Pattern.compile("\\s*(\\w+)\\s*=");
+//    QUOTED_PAT = Pattern.compile("'(([^'\\\\]+|\\\\')*)'");
+//    PAYLOAD_START_PAT = Pattern.compile("\\s*:");
+//    WORD_PAT = Pattern.compile("[a-zA-Z0-9_]+|.");
+//    COMMA_PAT = Pattern.compile(",");
+//    END_OF_INPUT_PAT = Pattern.compile("$");
+//  }
 
-  public static class ParseError extends Exception
-  {
-    public ParseError(String msg) { super(msg); }
-  };
+//  static KeyValue parseKeyValue(Matcher m) throws ParseError
+//  {
+//    if (match(m, START_PAT))
+//      return parseComplexKeyValue(m, m.group(1));
+//    // Key doesn't start with ':', accept either a char key or a key name.
+//    if (!match(m, WORD_PAT))
+//      parseError("Expected key, for example \":str ...\".", m);
+//    String key = m.group(0);
+//    KeyValue k = KeyValue.getSpecialKeyByName(key);
+//    if (k == null)
+//      return KeyValue.makeStringKey(key);
+//    return k;
+//  }
+
+//  static KeyValue parseComplexKeyValue(Matcher m, String kind) throws ParseError
+//  {
+//    // Attributes
+//    String symbol = null;
+//    int flags = 0;
+//    while (true)
+//    {
+//      if (!match(m, ATTR_PAT))
+//        break;
+//      String attr_name = m.group(1);
+//      String attr_value = parseSingleQuotedString(m);
+//      switch (attr_name)
+//      {
+//        case "flags":
+//          flags = parseFlags(attr_value, m);
+//          break;
+//        case "symbol":
+//          symbol = attr_value;
+//          break;
+//
+//        default:
+//          parseError("Unknown attribute "+attr_name, m);
+//      }
+//    }
+//    // Payload
+//    if (!match(m, PAYLOAD_START_PAT))
+//      parseError("Unexpected character", m);
+//    String payload;
+//    switch (kind)
+//    {
+//      case "str":
+//        payload = parseSingleQuotedString(m);
+//        if (symbol == null)
+//          return KeyValue.makeStringKey(payload, flags);
+//        return KeyValue.makeStringKeyWithSymbol(payload, symbol, flags);
+//
+//      case "char":
+//        payload = parsePayloadWord(m);
+//        if (payload.length() != 1)
+//          parseError("Expected a single character payload", m);
+//        return KeyValue.makeCharKey(payload.charAt(0), symbol, flags);
+//
+//      case "keyevent":
+//        payload = parsePayloadWord(m);
+//        int eventcode = 0;
+//        try { eventcode = Integer.parseInt(payload); }
+//        catch (Exception _e)
+//        { parseError("Expected an integer payload", m); }
+//        if (symbol == null)
+//          symbol = String.valueOf(eventcode);
+//        return KeyValue.keyeventKey(symbol, eventcode, flags);
+//
+//      case "macro":
+//        // :macro symbol='copy':ctrl,a,ctrl,c
+//        // :macro symbol='acute':compose,'
+//        KeyValue[] macro = parseKeyValueList(m);
+//        if (symbol == null)
+//          symbol = "macro";
+//        return KeyValue.makeMacro(symbol, macro, flags);
+//
+//      default: break;
+//    }
+//    parseError("Unknown kind '"+kind+"'", m, 1);
+//    return null; // Unreachable
+//  }
+//
+//  static String parseSingleQuotedString(Matcher m) throws ParseError
+//  {
+//    if (!match(m, QUOTED_PAT))
+//      parseError("Expected quoted string", m);
+//    return m.group(1).replace("\\'", "'");
+//  }
+//
+//  static String parsePayloadWord(Matcher m) throws ParseError
+//  {
+//    if (!match(m, WORD_PAT))
+//      parseError("Expected a word after ':' made of [a-zA-Z0-9_]", m);
+//    return m.group(0);
+//  }
+//
+//  static int parseFlags(String s, Matcher m) throws ParseError
+//  {
+//    int flags = 0;
+//    for (String f : s.split(","))
+//    {
+//      switch (f)
+//      {
+//        case "dim": flags |= KeyValue.FLAG_SECONDARY; break;
+//        case "small": flags |= KeyValue.FLAG_SMALLER_FONT; break;
+//        default: parseError("Unknown flag "+f, m);
+//      }
+//    }
+//    return flags;
+//  }
+//
+//  // Parse keys separated by comas
+//  static KeyValue[] parseKeyValueList(Matcher m) throws ParseError
+//  {
+//    ArrayList<KeyValue> out = new ArrayList<KeyValue>();
+//    out.add(parseKeyValue(m));
+//    while (match(m, COMMA_PAT))
+//      out.add(parseKeyValue(m));
+//    return out.toArray(new KeyValue[]{});
+//  }
+//
+//  static boolean match(Matcher m, Pattern pat)
+//  {
+//    try { m.region(m.end(), m.regionEnd()); } catch (Exception _e) {}
+//    m.usePattern(pat);
+//    return m.lookingAt();
+//  }
+//
+//  static void parseError(String msg, Matcher m) throws ParseError
+//  {
+//    parseError(msg, m, m.regionStart());
+//  }
+//
+//  static void parseError(String msg, Matcher m, int i) throws ParseError
+//  {
+//    StringBuilder msg_ = new StringBuilder("Syntax error");
+//    try
+//    {
+//      char c = m.group(0).charAt(0);
+//      msg_.append(" at character '").append(c).append("'");
+//    } catch (IllegalStateException _e) {}
+//    msg_.append(" at position ");
+//    msg_.append(i);
+//    msg_.append(": ");
+//    msg_.append(msg);
+//    throw new ParseError(msg_.toString());
+//  }
+//
+//  public static class ParseError extends Exception
+//  {
+//    public ParseError(String msg) { super(msg); }
+//  };
 }

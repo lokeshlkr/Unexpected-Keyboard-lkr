@@ -96,12 +96,10 @@ public final class KeyEventHandler
       case Keyevent: send_key_down_up(key.getKeyevent()); break;
       case Modifier: break;
       case Editing: handle_editing_key(key.getEditing()); break;
-      case Compose_pending:
-        _recv.set_compose_pending(true);
-        break;
+      case Compose_pending: _recv.set_compose_pending(true); break;
       case Slider: handle_slider(key.getSlider(), key.getSliderRepeat()); break;
       case StringWithSymbol: send_text(key.getStringWithSymbol()); break;
-      case Macro: send_macro(key.getMacroKeys()); break;
+      case Macro: evaluate_macro(key.getMacro()); break;
     }
     update_meta_state(old_mods);
   }
@@ -190,37 +188,6 @@ public final class KeyEventHandler
   {
     send_keyevent(KeyEvent.ACTION_DOWN, keyCode);
     send_keyevent(KeyEvent.ACTION_UP, keyCode);
-  }
-  public static void wait(int ms)
-  {
-    try
-    {
-      Thread.sleep(ms);
-    }
-    catch(InterruptedException ex)
-    {
-      Thread.currentThread().interrupt();
-    }
-  }
-
-  void send_macro(KeyValue[] keys)
-  {
-    Pointers.Modifiers active_mods = _mods.as_copy();
-    for(KeyValue key : keys){
-      switch(key.getKind()){
-        case Char:
-          key = KeyModifier.turn_into_keyevent(key);
-        case String:
-        case Keyevent:
-          key_up(key,active_mods);
-          active_mods = _mods.as_copy();
-          break;
-        case Modifier:
-          active_mods = active_mods.with_extra_mod(key);
-        default:break;
-      }
-      wait(20);
-    }
   }
 
   void send_keyevent(int eventAction, int eventCode)
@@ -346,6 +313,46 @@ public final class KeyEventHandler
       send_key_down_up_repeat(KeyEvent.KEYCODE_DPAD_UP, -d);
     else
       send_key_down_up_repeat(KeyEvent.KEYCODE_DPAD_DOWN, d);
+  }
+
+  Pointers.Modifiers initial = Pointers.Modifiers.EMPTY;
+  KeyValue[] mods_to_preserve = {
+          KeyValue.getSpecialKeyByName("ctrl"),
+          KeyValue.getSpecialKeyByName("shift"),
+          KeyValue.getSpecialKeyByName("alt"),
+          KeyValue.getSpecialKeyByName("meta"),
+  };
+  void evaluate_macro(KeyValue[] keys)
+  {
+      for (KeyValue mod : mods_to_preserve) {
+          if (_mods.has(mod.getModifier())) {
+              initial = initial.with_extra_mod(mod);
+          }
+      }
+
+    Pointers.Modifiers mods = initial;
+    final boolean autocap_paused = _autocap.pause();
+    for (KeyValue kv : keys)
+    {
+      kv = KeyModifier.modify(kv, mods);
+      if (kv == null)
+        continue;
+      if (kv.hasFlagsAny(KeyValue.FLAG_LATCH))
+      {
+        // Non-special latchable keys clear latched modifiers
+        if (!kv.hasFlagsAny(KeyValue.FLAG_SPECIAL))
+          mods = initial;
+        mods = mods.with_extra_mod(kv);
+      }
+      else
+      {
+        key_down(kv, false);
+        key_up(kv, mods);
+        mods = initial;
+      }
+    }
+    _autocap.unpause(autocap_paused);
+    initial = Pointers.Modifiers.EMPTY;
   }
 
   /** Repeat calls to [send_key_down_up]. */
