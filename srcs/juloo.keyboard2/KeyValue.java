@@ -792,32 +792,6 @@ public final class KeyValue implements Comparable<KeyValue>
       return _symbol.compareTo(snd._symbol);
     }
   };
-  public static final class Macro implements Comparable<Macro>
-  {
-    public final KeyValue[] keys;
-    final String _symbol;
-
-    public Macro(KeyValue[] _keys, String _sym)
-    {
-      keys = _keys;
-      _symbol = _sym;
-    }
-    
-    @Override
-    public String toString() { return _symbol; }
-
-    @Override
-    public int compareTo(Macro snd)
-    {
-//      int d = keys.length - snd.keys.length;
-//      if(d != 0) return d;
-//      for (int i = 0; i < keys.length; i++) {
-//        if(!keys[i].sameKey(snd.keys[i])) d++;
-//      }
-//      if (d != 0) return d;
-      return _symbol.compareTo(snd._symbol);
-    }
-  };
 
   public static enum Slider
   {
